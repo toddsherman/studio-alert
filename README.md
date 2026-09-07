@@ -5,6 +5,43 @@ notice from https://www.apple.com/shop/buy-mac/mac-studio.
 
 Two independent monitors, so a single failure never means a missed alert:
 
+## How it works, in plain English
+
+Every minute, a small program downloads Apple's Mac Studio store page and looks for one sentence. As long as
+the sentence is there, it writes down "still there" and goes back to sleep. The moment the sentence is gone,
+it waits fifteen seconds, downloads the page again to make sure it was not a fluke, and then sets off a siren
+on your phone that keeps sounding until you tap Acknowledge.
+
+The pieces that make that happen:
+
+- **Vercel** is the computer in the cloud that runs the program. It has a built-in scheduler (a "cron job")
+  that wakes the program up once a minute, around the clock, without any server of your own to keep running.
+  The program itself is a few small JavaScript files with no framework.
+- **Upstash Redis** is the program's notebook. Because each run starts fresh and remembers nothing, it needs
+  somewhere to jot down "have I already alerted?", "how many fetches failed in a row?", and "when did I last
+  check?". Redis is a tiny, fast database that holds those few facts. A lock in that notebook guarantees the
+  siren fires exactly once even if two runs overlap.
+- **Pushover** is the delivery service. It is a phone app that receives messages sent through a simple web
+  request. Its "emergency" setting repeats the alert every thirty seconds for up to three hours and can break
+  through silent mode and Focus. It was chosen after SMS and phone calls both failed: carriers block text
+  messages from unregistered numbers, and the carrier's spam filter swallowed the calls before the phone rang.
+- **A Mac at home** runs a copy of the same check using macOS's built-in scheduler (launchd). It is a backup
+  in case Vercel has a bad day, and it also acts as a watchdog: it asks the cloud monitor "are you still
+  checking?" every minute and alerts you if the answer is no.
+
+Safety nets, because a monitor that fails silently is worse than no monitor:
+
+- A **weekly rehearsal** runs the real alert code against a made-up sentence that is never on the page, so the
+  whole path from download to siren is proven every Wednesday, not just on the day it matters.
+- A **weekly heartbeat** on Sundays says "still watching" so silence is never ambiguous.
+- If Apple's page stops loading for thirty minutes, you get a "monitor may be broken" notice, then a
+  "recovered" notice when it comes back. Any unexpected crash sends an error notice too.
+- After the real alert, the cloud monitor keeps re-sending the siren every three hours until you acknowledge it.
+- On **December 1, 2026** both monitors send a final "retired" notice and shut themselves off.
+
+The whole thing costs nothing beyond a one-time five dollar Pushover purchase; Vercel and Upstash are on free
+or already-paid tiers, and a normal run uses two database commands to stay well inside the free quota.
+
 ## 1. Hosted monitor (primary) — `hosted/`, Vercel project `studio-alert`
 - Cron every minute → `/api/check`. Fetches the page (1 retry), requires HTTP 200 + "Mac Studio" on the page.
 - If the string is missing, waits 15s and refetches. Only a confirmed miss alerts.
