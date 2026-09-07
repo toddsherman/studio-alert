@@ -1,0 +1,11 @@
+# secrets & personal data
+secrets.sh
+state/
+hosted/.env*
+hosted/.vercel/
+# deps / tooling noise
+hosted/node_modules/
+hosted/.claude/
+hosted/skills-lock.json
+.DS_Store
+hosted/.agents/
